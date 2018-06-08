@@ -1,0 +1,52 @@
+$install_dependencies = <<-SCRIPT
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+  build-essential \
+  ca-certificates \
+  cmake \
+  git \
+  golang-go \
+  libelf-dev \
+  libgmp-dev \
+  libtspi-dev \
+  tpm-tools
+SCRIPT
+
+$install_tpm_emulator = <<-SCRIPT
+  cd /opt
+  git clone --depth 1 https://github.com/PeterHuewe/tpm-emulator tpm_emulator
+  cd /opt/tpm_emulator
+  git apply  /tmp/fallthrough.patch
+  mkdir build
+  cd build
+  cmake ../
+  make
+  make install
+SCRIPT
+
+$create_vtpm = <<-SCRIPT
+  ln -s /opt/tpm_emulator/build/tpmd_dev/linux/tpmd_dev.ko /lib/modules/`uname -r`
+  depmod -a
+  modprobe tpmd_dev
+  tpmd -d
+SCRIPT
+
+$setup_env = <<SCRIPT
+  echo # vagrant profile script > /etc/profile.d/vagrant.sh
+  export GOPATH=/go
+  echo export GOLANG_VERSION=1.10.1 >> /etc/profile.d/vagrant.sh
+  echo export GOPATH=/go >> /etc/profile.d/vagrant.sh
+  echo export PATH=$GOPATH/bin:/usr/local/go/bin:$PATH >> /etc/profile.d/vagrant.sh
+  mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
+  chmod +x /etc/profile.d/vagrant.sh
+SCRIPT
+
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/bionic64"
+  config.vm.provision "file", source: "./fallthrough.patch", destination: "/tmp/fallthrough.patch"
+  config.vm.provision "shell", inline: $install_dependencies
+  config.vm.provision "shell", inline: $install_tpm_emulator
+  config.vm.provision "shell", inline: $create_vtpm
+  config.vm.provision "shell", inline: $setup_env
+end
